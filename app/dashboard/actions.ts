@@ -27,6 +27,22 @@ function appOrigin(headerOrigin: string | null) {
   return headerOrigin || process.env.APP_URL || "http://localhost:3000";
 }
 
+function resolveRedirectTarget(formData: FormData, fallbackPath: string) {
+  const redirectTo = String(formData.get("redirectTo") || "").trim();
+
+  if (redirectTo.startsWith("/") && !redirectTo.startsWith("//")) {
+    return redirectTo;
+  }
+
+  return fallbackPath;
+}
+
+function withFlash(path: string, type: "error" | "message", value: string) {
+  const url = new URL(path, "http://localhost");
+  url.searchParams.set(type, value);
+  return `${url.pathname}${url.search}`;
+}
+
 type InviteRecord = {
   id: string;
   organization_id: string;
@@ -70,6 +86,7 @@ async function requireOrganizationOwner(organizationId: string) {
 
 export async function createOrganizationAction(formData: FormData) {
   const { supabase } = await requireAuthenticatedUser();
+  const redirectTo = resolveRedirectTarget(formData, "/dashboard");
 
   const name = String(formData.get("name") || "").trim();
   const rawSlug = String(formData.get("slug") || "").trim();
@@ -83,18 +100,19 @@ export async function createOrganizationAction(formData: FormData) {
     .single<OrganizationRecord>();
 
   if (error) {
-    redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
+    redirect(withFlash(redirectTo, "error", error.message));
   }
 
   if (data?.id) {
     await setActiveOrganizationIdCookie(data.id);
   }
 
-  redirect("/dashboard?message=Organization%20created.");
+  redirect(withFlash(redirectTo, "message", "Organization created."));
 }
 
 export async function setActiveOrganizationAction(formData: FormData) {
   const organizationId = String(formData.get("organizationId") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/dashboard");
   const { supabase, user } = await requireAuthenticatedUser();
 
   const { data: membership, error } = await supabase
@@ -105,17 +123,18 @@ export async function setActiveOrganizationAction(formData: FormData) {
     .maybeSingle<{ organization_id: string }>();
 
   if (error || !membership) {
-    redirect("/dashboard?error=That%20organization%20is%20not%20available%20to%20this%20account.");
+    redirect(withFlash(redirectTo, "error", "That organization is not available to this account."));
   }
 
   await setActiveOrganizationIdCookie(organizationId);
-  redirect("/dashboard?message=Active%20organization%20updated.");
+  redirect(withFlash(redirectTo, "message", "Active organization updated."));
 }
 
 export async function inviteMemberAction(formData: FormData) {
   const organizationId = String(formData.get("organizationId") || "").trim();
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const role = String(formData.get("role") || "member").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/organization");
 
   const { supabase, user } = await requireAuthenticatedUser();
   const [subscription, usage] = await Promise.all([
@@ -126,9 +145,11 @@ export async function inviteMemberAction(formData: FormData) {
 
   if (!entitlementSummary.canInviteMore) {
     redirect(
-      `/dashboard?error=${encodeURIComponent(
+      withFlash(
+        redirectTo,
+        "error",
         `This workspace is at its ${entitlementSummary.effectivePlan.name} seat limit. Upgrade billing before inviting more members.`
-      )}`
+      )
     );
   }
 
@@ -141,7 +162,7 @@ export async function inviteMemberAction(formData: FormData) {
     .single<InviteRecord>();
 
   if (error || !invite) {
-    redirect(`/dashboard?error=${encodeURIComponent(error?.message || "Unable to create invite.")}`);
+    redirect(withFlash(redirectTo, "error", error?.message || "Unable to create invite."));
   }
 
   const { data: organization } = await supabase
@@ -166,14 +187,15 @@ export async function inviteMemberAction(formData: FormData) {
   });
 
   if (emailResult.status === "sent") {
-    redirect("/dashboard?message=Invite%20created%20and%20email%20sent.");
+    redirect(withFlash(redirectTo, "message", "Invite created and email sent."));
   }
 
-  redirect(`/dashboard?message=${encodeURIComponent(emailResult.reason)}`);
+  redirect(withFlash(redirectTo, "message", emailResult.reason));
 }
 
 export async function resendInviteAction(formData: FormData) {
   const inviteId = String(formData.get("inviteId") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/organization");
   const { supabase, user } = await requireAuthenticatedUser();
   const { data: invite, error } = await supabase
     .from("organization_invites")
@@ -182,11 +204,11 @@ export async function resendInviteAction(formData: FormData) {
     .single<InviteRecord & { status: string }>();
 
   if (error || !invite) {
-    redirect(`/dashboard?error=${encodeURIComponent(error?.message || "Unable to load invite.")}`);
+    redirect(withFlash(redirectTo, "error", error?.message || "Unable to load invite."));
   }
 
   if (invite.status !== "pending") {
-    redirect("/dashboard?error=Only%20pending%20invites%20can%20be%20resent.");
+    redirect(withFlash(redirectTo, "error", "Only pending invites can be resent."));
   }
 
   const { data: organization } = await supabase
@@ -211,29 +233,31 @@ export async function resendInviteAction(formData: FormData) {
   });
 
   if (emailResult.status === "sent") {
-    redirect("/dashboard?message=Invite%20email%20resent.");
+    redirect(withFlash(redirectTo, "message", "Invite email resent."));
   }
 
-  redirect(`/dashboard?message=${encodeURIComponent(emailResult.reason)}`);
+  redirect(withFlash(redirectTo, "message", emailResult.reason));
 }
 
 export async function revokeInviteAction(formData: FormData) {
   const inviteId = String(formData.get("inviteId") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/organization");
   const { supabase } = await requireAuthenticatedUser();
   const { error } = await supabase.rpc("revoke_organization_invite", {
     p_invite_id: inviteId,
   });
 
   if (error) {
-    redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
+    redirect(withFlash(redirectTo, "error", error.message));
   }
 
-  redirect("/dashboard?message=Invite%20revoked.");
+  redirect(withFlash(redirectTo, "message", "Invite revoked."));
 }
 
 export async function updateMemberRoleAction(formData: FormData) {
   const membershipId = String(formData.get("membershipId") || "").trim();
   const role = String(formData.get("role") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/organization");
 
   const { supabase } = await requireAuthenticatedUser();
   const { error } = await supabase.rpc("update_organization_member_role", {
@@ -242,14 +266,15 @@ export async function updateMemberRoleAction(formData: FormData) {
   });
 
   if (error) {
-    redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
+    redirect(withFlash(redirectTo, "error", error.message));
   }
 
-  redirect("/dashboard?message=Member%20role%20updated.");
+  redirect(withFlash(redirectTo, "message", "Member role updated."));
 }
 
 export async function removeMemberAction(formData: FormData) {
   const membershipId = String(formData.get("membershipId") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/organization");
 
   const { supabase } = await requireAuthenticatedUser();
   const { error } = await supabase.rpc("remove_organization_member", {
@@ -257,22 +282,23 @@ export async function removeMemberAction(formData: FormData) {
   });
 
   if (error) {
-    redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
+    redirect(withFlash(redirectTo, "error", error.message));
   }
 
-  redirect("/dashboard?message=Member%20removed.");
+  redirect(withFlash(redirectTo, "message", "Member removed."));
 }
 
 export async function startCheckoutAction(formData: FormData) {
   const organizationId = String(formData.get("organizationId") || "").trim();
   const requestedPlan = String(formData.get("planKey") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/billing");
 
   if (!isPlanKey(requestedPlan) || requestedPlan === "free") {
-    redirect("/dashboard?error=Select%20a%20valid%20paid%20plan.");
+    redirect(withFlash(redirectTo, "error", "Select a valid paid plan."));
   }
 
   if (!stripeIsConfigured()) {
-    redirect("/dashboard?error=Stripe%20is%20not%20configured.%20Set%20STRIPE_SECRET_KEY%20to%20enable%20checkout.");
+    redirect(withFlash(redirectTo, "error", "Stripe is not configured. Set STRIPE_SECRET_KEY to enable checkout."));
   }
 
   const planKey = requestedPlan as PlanKey;
@@ -287,7 +313,7 @@ export async function startCheckoutAction(formData: FormData) {
   ]);
 
   if (organizationResponse.error || !organizationResponse.data) {
-    redirect("/dashboard?error=Unable%20to%20load%20the%20selected%20organization.");
+    redirect(withFlash(redirectTo, "error", "Unable to load the selected organization."));
   }
 
   const stripe = createStripeServerClient();
@@ -309,7 +335,7 @@ export async function startCheckoutAction(formData: FormData) {
   const lookupKey = getStripeLookupKeyForPlan(planKey);
 
   if (!lookupKey) {
-    redirect("/dashboard?error=The%20selected%20plan%20does%20not%20have%20a%20checkout%20configuration.");
+    redirect(withFlash(redirectTo, "error", "The selected plan does not have a checkout configuration."));
   }
 
   const prices = await stripe.prices.list({
@@ -320,9 +346,11 @@ export async function startCheckoutAction(formData: FormData) {
 
   if (!prices.data[0]) {
     redirect(
-      `/dashboard?error=${encodeURIComponent(
+      withFlash(
+        redirectTo,
+        "error",
         `No active Stripe price was found for lookup key "${lookupKey}". Create that price in Stripe before using checkout.`
-      )}`
+      )
     );
   }
 
@@ -341,8 +369,8 @@ export async function startCheckoutAction(formData: FormData) {
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
-    success_url: `${origin}/dashboard?message=${encodeURIComponent("Billing updated successfully.")}`,
-    cancel_url: `${origin}/dashboard?message=${encodeURIComponent("Checkout canceled.")}`,
+    success_url: `${origin}${withFlash(redirectTo, "message", "Billing updated successfully.")}`,
+    cancel_url: `${origin}${withFlash(redirectTo, "message", "Checkout canceled.")}`,
     line_items: [
       {
         price: prices.data[0].id,
@@ -364,7 +392,7 @@ export async function startCheckoutAction(formData: FormData) {
   });
 
   if (!session.url) {
-    redirect("/dashboard?error=Stripe%20checkout%20did%20not%20return%20a%20redirect%20URL.");
+    redirect(withFlash(redirectTo, "error", "Stripe checkout did not return a redirect URL."));
   }
 
   redirect(session.url);
@@ -372,16 +400,19 @@ export async function startCheckoutAction(formData: FormData) {
 
 export async function openBillingPortalAction(formData: FormData) {
   const organizationId = String(formData.get("organizationId") || "").trim();
+  const redirectTo = resolveRedirectTarget(formData, "/settings/billing");
 
   if (!stripeIsConfigured()) {
-    redirect("/dashboard?error=Stripe%20is%20not%20configured.%20Set%20STRIPE_SECRET_KEY%20to%20enable%20billing%20portal.");
+    redirect(
+      withFlash(redirectTo, "error", "Stripe is not configured. Set STRIPE_SECRET_KEY to enable billing portal.")
+    );
   }
 
   const { supabase } = await requireOrganizationOwner(organizationId);
   const subscription = await getOrganizationSubscription(supabase, organizationId);
 
   if (!subscription.provider_customer_id) {
-    redirect("/dashboard?error=No%20Stripe%20customer%20exists%20for%20this%20organization%20yet.");
+    redirect(withFlash(redirectTo, "error", "No Stripe customer exists for this organization yet."));
   }
 
   const stripe = createStripeServerClient();
@@ -396,7 +427,7 @@ export async function openBillingPortalAction(formData: FormData) {
   });
   const session = await stripe.billingPortal.sessions.create({
     customer: subscription.provider_customer_id,
-    return_url: `${origin}/dashboard`,
+    return_url: `${origin}${redirectTo}`,
   });
 
   redirect(session.url);

@@ -111,29 +111,8 @@ At minimum, configure:
 
 ### Deployment ownership
 
-There are two possible deployment models:
-
-- Vercel native Git integration: recommended for this template
-- GitHub Actions driven deployment: optional advanced path
-
-If you use Vercel native Git integration, you do not need `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID`.
-Those are only needed for the optional GitHub Actions deployment workflow.
-
-## Deployment Automation
-
-- GitHub Actions now includes a Vercel deployment workflow for:
-  - preview deployments on pull requests
-  - production deployments on pushes to `main`
-- Add these GitHub repository secrets before the workflow can deploy:
-  - `VERCEL_TOKEN`
-  - `VERCEL_ORG_ID`
-  - `VERCEL_PROJECT_ID`
-- Configure your application environment variables in Vercel for both Preview and Production:
-  - `APP_URL`
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - optional billing and email secrets if you want those features live
-- If you use this GitHub Actions workflow for deployment, disable or avoid duplicate Vercel Git auto-deploys for the same project.
+This template assumes Vercel native Git integration as the default deployment model.
+That keeps deployment simple and avoids extra GitHub deployment secrets.
 
 ## Local URLs
 
