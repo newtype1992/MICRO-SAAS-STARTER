@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Start local Supabase stack
+        run: supabase start
+
       - name: Reset local Supabase database
         run: supabase db reset
 
