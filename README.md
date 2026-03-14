@@ -109,6 +109,22 @@ At minimum, configure:
 - your Vercel preview domain pattern if you want preview auth flows to work
 - any local development URL you still use, such as `http://localhost:3000`
 
+### Current hosted auth behavior
+
+The current hosted starter works with password sign-up and sign-in, but there is one important caveat:
+
+- local development assumes email confirmation is disabled
+- the current template does not yet include a dedicated SSR email-confirmation callback route such as `/auth/confirm`
+- because of that, the simplest production-safe configuration today is to keep Supabase `Confirm email` disabled while validating the hosted starter
+
+Current recommendation for hosted smoke tests:
+
+- disable `Confirm email` in Supabase Auth
+- configure `Site URL` and redirect URLs for your deployed domain
+- validate sign up, sign in, organization creation, and dashboard access without email confirmation
+
+If you want to re-enable email confirmation later, add a proper confirmation callback route and update the auth flow to handle hosted email verification before turning it back on.
+
 ### Deployment ownership
 
 This template assumes Vercel native Git integration as the default deployment model.
